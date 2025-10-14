@@ -30,7 +30,7 @@
         
         .input-section {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
             margin-bottom: 30px;
         }
@@ -79,7 +79,45 @@
             margin-bottom: 20px;
             color: #2c3e50;
         }
-        
+
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-top: 30px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: right;
+            border-bottom: 1px solid #e1e8ed;
+        }
+
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #2c3e50;
+            position: sticky;
+            top: 0;
+        }
+
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+
+        .table-scroll {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+        }
+
         @media (max-width: 768px) {
             .input-section {
                 grid-template-columns: 1fr;
@@ -101,20 +139,51 @@
         
         <div class="input-section">
             <div class="input-group">
+                <label for="initialCapital">Initial Capital (€)</label>
+                <input type="number" id="initialCapital" value="100" min="0" step="100">
+            </div>
+
+            <div class="input-group">
                 <label for="annualReturn">Annual Return Rate (%)</label>
                 <input type="number" id="annualReturn" value="10" min="0" max="100" step="0.1">
             </div>
-            
+
             <div class="input-group">
                 <label for="monthlySavings">Monthly Savings Amount (€)</label>
-                <input type="number" id="monthlySavings" value="300" min="0" step="10">
+                <input type="number" id="monthlySavings" value="10" min="0" step="10">
             </div>
         </div>
     </div>
     
     <div class="chart-container">
-        <div class="chart-title">Monthly Income vs Years of Saving</div>
+        <div class="chart-title">Total Capital vs Years of Saving</div>
         <canvas id="chart" width="800" height="400"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <div class="chart-title">Monthly Income vs Years of Saving</div>
+        <canvas id="incomeChart" width="800" height="400"></canvas>
+    </div>
+
+    <div class="table-container">
+        <div class="chart-title">Investment Data Table</div>
+        <div class="table-scroll">
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th>Year</th>
+                        <th>Starting Capital (€)</th>
+                        <th>Annual Deposit (€)</th>
+                        <th>Interest Earned (€)</th>
+                        <th>Ending Capital (€)</th>
+                        <th>Total Invested (€)</th>
+                        <th>Monthly Income (€)</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                </tbody>
+            </table>
+        </div>
     </div>
 
     <script>
@@ -122,52 +191,90 @@
             constructor() {
                 this.canvas = document.getElementById('chart');
                 this.ctx = this.canvas.getContext('2d');
+                this.incomeCanvas = document.getElementById('incomeChart');
+                this.incomeCtx = this.incomeCanvas.getContext('2d');
+                this.initialCapitalInput = document.getElementById('initialCapital');
                 this.annualReturnInput = document.getElementById('annualReturn');
                 this.monthlySavingsInput = document.getElementById('monthlySavings');
-                
+
                 this.initializeEventListeners();
                 this.calculateAndDraw();
             }
-            
+
             initializeEventListeners() {
+                this.initialCapitalInput.addEventListener('input', () => this.calculateAndDraw());
                 this.annualReturnInput.addEventListener('input', () => this.calculateAndDraw());
                 this.monthlySavingsInput.addEventListener('input', () => this.calculateAndDraw());
             }
             
             calculateInvestmentData() {
+                const initialCapital = parseFloat(this.initialCapitalInput.value) || 0;
                 const annualRate = parseFloat(this.annualReturnInput.value) / 100;
                 const monthlySavings = parseFloat(this.monthlySavingsInput.value);
                 const maxYears = 30;
                 const data = [];
-                
-                for (let years = 1; years <= maxYears; years++) {
-                    const totalCapital = this.calculateTotalCapital(monthlySavings, annualRate, years);
-                    const yearlyReturn = totalCapital * annualRate;
-                    const monthlyIncome = yearlyReturn / 12;
-                    
+                let startingCapital = initialCapital;
+                let cumulativeInvested = initialCapital;
+
+                for (let year = 1; year <= maxYears; year++) {
+                    const annualDeposit = monthlySavings * 12;
+                    const interestEarned = startingCapital * annualRate;
+                    const endingCapital = startingCapital + annualDeposit + interestEarned;
+                    cumulativeInvested += annualDeposit;
+                    const monthlyIncome = endingCapital * annualRate / 12;
+
                     data.push({
-                        years: years,
+                        year: year,
+                        startingCapital: startingCapital,
+                        annualDeposit: annualDeposit,
+                        interestEarned: interestEarned,
+                        endingCapital: endingCapital,
+                        totalInvested: cumulativeInvested,
                         monthlyIncome: monthlyIncome
                     });
+
+                    startingCapital = endingCapital;
                 }
-                
+
                 return data;
             }
             
             calculateTotalCapital(monthlySavings, annualRate, years) {
-                const monthlyRate = annualRate / 12;
-                const totalMonths = years * 12;
-                
-                if (monthlyRate === 0) {
-                    return monthlySavings * totalMonths;
+                // Formula: FV = PMT × 12 × [(1 + r)^n - 1] / r
+                // Where r = annual rate, n = years
+                // PMT × 12 accounts for 12 monthly contributions per year
+
+                if (annualRate === 0) {
+                    return monthlySavings * 12 * years;
                 }
-                
-                return monthlySavings * (Math.pow(1 + monthlyRate, totalMonths) - 1) / monthlyRate;
+
+                return monthlySavings * 12 * (Math.pow(1 + annualRate, years) - 1) / annualRate;
             }
             
             calculateAndDraw() {
                 const data = this.calculateInvestmentData();
                 this.drawChart(data);
+                this.drawIncomeChart(data);
+                this.updateTable(data);
+            }
+
+            updateTable(data) {
+                const tableBody = document.getElementById('tableBody');
+                tableBody.innerHTML = '';
+
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${row.year}</td>
+                        <td>€${row.startingCapital.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                        <td>€${row.annualDeposit.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                        <td>€${row.interestEarned.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                        <td>€${row.endingCapital.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                        <td>€${row.totalInvested.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                        <td>€${row.monthlyIncome.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</td>
+                    `;
+                    tableBody.appendChild(tr);
+                });
             }
             
             drawChart(data) {
@@ -176,85 +283,113 @@
                 const padding = 60;
                 const chartWidth = canvas.width - 2 * padding;
                 const chartHeight = canvas.height - 2 * padding;
-                
+
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                const maxX = Math.max(...data.map(d => d.years));
-                const maxY = Math.max(...data.map(d => d.monthlyIncome));
-                
-                this.drawAxes(ctx, padding, chartWidth, chartHeight, maxX, maxY);
-                this.drawData(ctx, data, padding, chartWidth, chartHeight, maxX, maxY);
-                this.drawLabels(ctx, padding, chartWidth, chartHeight);
+
+                const maxX = Math.max(...data.map(d => d.year));
+                const maxY = Math.max(...data.map(d => d.endingCapital));
+
+                this.drawAxes(ctx, padding, chartWidth, chartHeight, maxX, maxY, 'Total Capital (€)');
+                this.drawData(ctx, data, padding, chartWidth, chartHeight, maxX, maxY, 'endingCapital');
             }
-            
-            drawAxes(ctx, padding, chartWidth, chartHeight, maxX, maxY) {
+
+            drawIncomeChart(data) {
+                const ctx = this.incomeCtx;
+                const canvas = this.incomeCanvas;
+                const padding = 60;
+                const chartWidth = canvas.width - 2 * padding;
+                const chartHeight = canvas.height - 2 * padding;
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                const maxX = Math.max(...data.map(d => d.year));
+                const maxY = Math.max(...data.map(d => d.monthlyIncome));
+
+                this.drawAxes(ctx, padding, chartWidth, chartHeight, maxX, maxY, 'Monthly Income (€)');
+                this.drawData(ctx, data, padding, chartWidth, chartHeight, maxX, maxY, 'monthlyIncome');
+            }
+
+            drawAxes(ctx, padding, chartWidth, chartHeight, maxX, maxY, yLabel) {
                 ctx.strokeStyle = '#333';
                 ctx.lineWidth = 2;
-                
+
                 ctx.beginPath();
                 ctx.moveTo(padding, padding);
                 ctx.lineTo(padding, padding + chartHeight);
                 ctx.lineTo(padding + chartWidth, padding + chartHeight);
                 ctx.stroke();
-                
+
                 ctx.font = '12px sans-serif';
                 ctx.fillStyle = '#666';
                 ctx.textAlign = 'center';
-                
+
                 for (let i = 0; i <= 6; i++) {
                     const x = padding + (i / 6) * chartWidth;
                     const year = Math.round((i / 6) * maxX);
-                    
+
                     ctx.beginPath();
                     ctx.moveTo(x, padding + chartHeight);
                     ctx.lineTo(x, padding + chartHeight + 5);
                     ctx.stroke();
-                    
+
                     ctx.fillText(year.toString(), x, padding + chartHeight + 18);
                 }
-                
+
                 ctx.textAlign = 'right';
                 for (let i = 0; i <= 5; i++) {
                     const y = padding + chartHeight - (i / 5) * chartHeight;
-                    const income = Math.round((i / 5) * maxY);
-                    
+                    const value = Math.round((i / 5) * maxY);
+
                     ctx.beginPath();
                     ctx.moveTo(padding - 5, y);
                     ctx.lineTo(padding, y);
                     ctx.stroke();
-                    
-                    ctx.fillText('€' + income.toLocaleString(), padding - 10, y + 4);
+
+                    ctx.fillText('€' + value.toLocaleString(), padding - 10, y + 4);
                 }
+
+                // Draw axis labels
+                ctx.fillStyle = '#333';
+                ctx.font = '14px sans-serif';
+                ctx.textAlign = 'center';
+
+                ctx.fillText('Years of Saving', padding + chartWidth / 2, padding + chartHeight + 45);
+
+                ctx.save();
+                ctx.translate(20, padding + chartHeight / 2);
+                ctx.rotate(-Math.PI / 2);
+                ctx.fillText(yLabel, 0, 0);
+                ctx.restore();
             }
             
-            drawData(ctx, data, padding, chartWidth, chartHeight, maxX, maxY) {
+            drawData(ctx, data, padding, chartWidth, chartHeight, maxX, maxY, dataKey) {
                 ctx.strokeStyle = '#3498db';
                 ctx.lineWidth = 3;
                 ctx.fillStyle = 'rgba(52, 152, 219, 0.1)';
-                
+
                 ctx.beginPath();
                 ctx.moveTo(padding, padding + chartHeight);
-                
+
                 data.forEach((point, index) => {
-                    const x = padding + (point.years / maxX) * chartWidth;
-                    const y = padding + chartHeight - (point.monthlyIncome / maxY) * chartHeight;
-                    
+                    const x = padding + (point.year / maxX) * chartWidth;
+                    const y = padding + chartHeight - (point[dataKey] / maxY) * chartHeight;
+
                     if (index === 0) {
                         ctx.lineTo(x, y);
                     } else {
                         ctx.lineTo(x, y);
                     }
                 });
-                
+
                 ctx.lineTo(padding + chartWidth, padding + chartHeight);
                 ctx.closePath();
                 ctx.fill();
-                
+
                 ctx.beginPath();
                 data.forEach((point, index) => {
-                    const x = padding + (point.years / maxX) * chartWidth;
-                    const y = padding + chartHeight - (point.monthlyIncome / maxY) * chartHeight;
-                    
+                    const x = padding + (point.year / maxX) * chartWidth;
+                    const y = padding + chartHeight - (point[dataKey] / maxY) * chartHeight;
+
                     if (index === 0) {
                         ctx.moveTo(x, y);
                     } else {
@@ -262,30 +397,16 @@
                     }
                 });
                 ctx.stroke();
-                
+
                 data.forEach((point) => {
-                    const x = padding + (point.years / maxX) * chartWidth;
-                    const y = padding + chartHeight - (point.monthlyIncome / maxY) * chartHeight;
-                    
+                    const x = padding + (point.year / maxX) * chartWidth;
+                    const y = padding + chartHeight - (point[dataKey] / maxY) * chartHeight;
+
                     ctx.fillStyle = '#3498db';
                     ctx.beginPath();
                     ctx.arc(x, y, 4, 0, 2 * Math.PI);
                     ctx.fill();
                 });
-            }
-            
-            drawLabels(ctx, padding, chartWidth, chartHeight) {
-                ctx.fillStyle = '#333';
-                ctx.font = '14px sans-serif';
-                ctx.textAlign = 'center';
-                
-                ctx.fillText('Years of Saving', padding + chartWidth / 2, padding + chartHeight + 45);
-                
-                ctx.save();
-                ctx.translate(20, padding + chartHeight / 2);
-                ctx.rotate(-Math.PI / 2);
-                ctx.fillText('Monthly Income (€)', 0, 0);
-                ctx.restore();
             }
         }
         
